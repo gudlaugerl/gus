@@ -264,7 +264,7 @@ class VinterbadAlertMonitor:
             raise RuntimeError("Email not configured: missing VINTERBAD_EMAIL or VINTERBAD_APP_PASSWORD")
         if not RECIPIENT_EMAILS:
             raise RuntimeError("Email not configured: RECIPIENT_EMAILS is empty")
-
+   
     def send_email_alert(self, event: Dict) -> bool:
         if not EMAIL_ENABLED:
             logger.info("Email alerts disabled")
@@ -297,7 +297,10 @@ Book now before it fills up!
 ---
 This is an automated alert from your Vinterbad monitor.
 """
-            html = f"""<html><body>
+
+            html = f"""
+<html>
+<body>
 <div style="font-family:Arial,Helvetica,sans-serif;max-width:640px;margin:auto">
   <div style="background:#5b6ee1;color:#fff;padding:16px;border-radius:10px 10px 0 0">
     <h2>🏊‍♂️ New Slot Available!</h2>
@@ -305,4 +308,43 @@ This is an automated alert from your Vinterbad monitor.
   </div>
   <div style="background:#f7f7f7;padding:16px;border-radius:0 0 10px 10px">
     <div style="background:#fff;padding:12px 16px;border-left:4px solid #5b6ee1;border-radius:6px;margin:12px 0">
-      <h3 style="margin:0
+      <h3 style="margin:0 0 8px 0">Event Details</h3>
+      <p style="margin:0"><strong>{event_info}</strong></p>
+    </div>
+    <p>Don't wait—these slots fill up fast!</p>
+    <p>
+      <a href="{booking_url}" style="display:inline-block;padding:10px 16px;background:#5b6ee1;color:#fff;text-decoration:none;border-radius:6px;font-weight:bold">
+        📅 Book Now
+      </a>
+    </p>
+    <p style="font-size:12px;color:#666">
+      Direct booking URL:<br>
+      <a href="{booking_url}">{booking_url}</a>
+    </p>
+  </div>
+  <p style="text-align:center;color:#666;font-size:12px">
+    This is an automated alert • {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC
+  </p>
+</div>
+</body>
+</html>
+"""
+
+            part1 = MIMEText(text, "plain")
+            part2 = MIMEText(html, "html")
+            msg.attach(part1)
+            msg.attach(part2)
+
+            with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+                server.login(SENDER_EMAIL, SENDER_PASSWORD)
+                server.send_message(msg)
+
+            logger.info(f"✅ Email alert sent to {len(RECIPIENT_EMAILS)} recipient(s)")
+            return True
+
+        except smtplib.SMTPAuthenticationError:
+            logger.error("Email auth failed (check App Password)")
+            return False
+        except Exception as e:
+            logger.error(f"Failed to send email: {e}")
+            return False

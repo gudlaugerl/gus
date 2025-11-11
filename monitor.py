@@ -104,13 +104,24 @@ class VinterbadAlertMonitor:
             logger.error(f"Could not save seen events: {e}")
 
     # ---------- api ----------
+
     def get_date_range(self):
-        now = datetime.utcnow()
-        from_date = now - timedelta(days=LOOKBACK_DAYS)
-        to_date = now + timedelta(days=LOOKAHEAD_DAYS)
+        tz = ZoneInfo("Europe/Copenhagen")
+        now_local = datetime.now(tz)
+    
+        # Start = beginning of today - LOOKBACK_DAYS
+        start_local = (now_local - timedelta(days=LOOKBACK_DAYS)).replace(hour=0, minute=0, second=0, microsecond=0)
+    
+        # End = end of day + LOOKAHEAD_DAYS
+        end_local = (now_local + timedelta(days=LOOKAHEAD_DAYS)).replace(hour=23, minute=59, second=59, microsecond=999000)
+    
+        # Convert to UTC / Zulu format
+        start_utc = start_local.astimezone(ZoneInfo("UTC"))
+        end_utc = end_local.astimezone(ZoneInfo("UTC"))
+    
         return {
-            "fromOffset": from_date.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
-            "toTime": to_date.strftime("%Y-%m-%dT23:59:59.999Z"),
+            "fromOffset": start_utc.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+            "toTime": end_utc.strftime("%Y-%m-%dT%H:%M:%S.%fZ")[:-3],  # keep milliseconds
         }
 
     def fetch_events(self) -> List[Dict]:
@@ -121,15 +132,38 @@ class VinterbadAlertMonitor:
                 logger.error(f"API non-200: {resp.status_code} - {resp.text[:300]}...")
             resp.raise_for_status()
             data = resp.json()
-
+    
+            # If it's already a list of events
             if isinstance(data, list):
+                logger.info(f"API returned a list with {len(data)} items")
                 return data
+    
+            # Dict response: try common shapes
+            events: List[Dict] = []
             if isinstance(data, dict):
-                for key in ["events", "data", "activities", "days"]:
-                    if key in data:
-                        v = data[key]
-                        return v if isinstance(v, list) else [v]
-
+                # 1) days => each day may have 'events'
+                if "days" in data and isinstance(data["days"], list):
+                    day_count = len(data["days"])
+                    for d in data["days"]:
+                        evs = d.get("events") or d.get("data") or []
+                        if isinstance(evs, dict):
+                            evs = [evs]
+                        if isinstance(evs, list):
+                            events.extend(evs)
+                    logger.info(f"Flattened {day_count} day(s) to {len(events)} event(s)")
+                    if events:
+                        logger.info("Sample events: " + " | ".join(self.format_event_info(e) for e in events[:2]))
+                    return events
+    
+                # 2) straight 'events' or 'data' list
+                for key in ["events", "data", "activities", "results"]:
+                    v = data.get(key)
+                    if isinstance(v, list):
+                        logger.info(f"API '{key}' list size: {len(v)}")
+                        return v
+                    if isinstance(v, dict):
+                        return [v]
+    
             logger.warning(f"Unexpected API structure: {type(data)}")
             return []
         except requests.exceptions.RequestException as e:

@@ -255,88 +255,88 @@ class VinterbadAlertMonitor:
         if not RECIPIENT_EMAILS:
             raise RuntimeError("Email not configured: RECIPIENT_EMAILS is empty")
 
-def send_email_alert(self, event: Dict) -> bool:
-    if not EMAIL_ENABLED:
-        logger.info("Email alerts disabled")
-        return False
-
-    try:
-        self._ensure_email_config()
-        booking_info = self.extract_booking_info(event)
-        booking_url = "https://www.vinterbadbryggen.com"
-        if booking_info:
-            activity_id, event_id, _ = booking_info
-            booking_url = self.construct_booking_url(activity_id, event_id)
-        event_info = self.format_event_info(event)
-
-        msg = MIMEMultipart("alternative")
-        msg["Subject"] = "🏊‍♂️ New Vinterbad Slot Available!"
-        msg["From"] = SENDER_EMAIL
-        msg["To"] = ", ".join(RECIPIENT_EMAILS)
-
-        text = f"""New winter swimming slot available at Vinterbadbryggen!
-
-Event Details:
-{event_info}
-
-Booking URL:
-{booking_url}
-
-Book now before it fills up!
-
----
-This is an automated alert from your Vinterbad monitor.
-"""
-
-        # IMPORTANT: this whole block stays indented under `try:`
-        html = (
-            "<html>\n"
-            "<body>\n"
-            '<div style="font-family:Arial,Helvetica,sans-serif;max-width:640px;margin:auto">\n'
-            '  <div style="background:#5b6ee1;color:#fff;padding:16px;border-radius:10px 10px 0 0">\n'
-            "    <h2>🏊‍♂️ New Slot Available!</h2>\n"
-            "    <p>A winter swimming slot just opened up at Vinterbadbryggen</p>\n"
-            "  </div>\n"
-            '  <div style="background:#f7f7f7;padding:16px;border-radius:0 0 10px 10px">\n'
-            '    <div style="background:#fff;padding:12px 16px;border-left:4px solid #5b6ee1;border-radius:6px;margin:12px 0">\n'
-            '      <h3 style="margin:0 0 8px 0">Event Details</h3>\n'
-            f'      <p style="margin:0"><strong>{event_info}</strong></p>\n'
-            "    </div>\n"
-            "    <p>Don't wait—these slots fill up fast!</p>\n"
-            "    <p>\n"
-            f'      <a href="{booking_url}" style="display:inline-block;padding:10px 16px;background:#5b6ee1;color:#fff;text-decoration:none;border-radius:6px;font-weight:bold">📅 Book Now</a>\n'
-            "    </p>\n"
-            '    <p style="font-size:12px;color:#666">\n'
-            "      Direct booking URL:<br>\n"
-            f'      <a href="{booking_url}">{booking_url}</a>\n'
-            "    </p>\n"
-            "  </div>\n"
-            '  <p style="text-align:center;color:#666;font-size:12px">\n'
-            f"    This is an automated alert • {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC\n"
-            "  </p>\n"
-            "</div>\n"
-            "</body>\n"
-            "</html>\n"
-        )
-
-        part1 = MIMEText(text, "plain")
-        part2 = MIMEText(html, "html")
-        msg.attach(part1)
-        msg.attach(part2)
-
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-            server.login(SENDER_EMAIL, SENDER_PASSWORD)
-            server.send_message(msg)
-
-        logger.info(f"✅ Email alert sent to {len(RECIPIENT_EMAILS)} recipient(s)")
-        return True
-
-    except smtplib.SMTPAuthenticationError:
-        logger.error("Email auth failed (check App Password)")
-        return False
-    except Exception as e:
-        logger.error(f"Failed to send email: {e}")
-        return False
+    def send_email_alert(self, event: Dict) -> bool:
+        if not EMAIL_ENABLED:
+            logger.info("Email alerts disabled")
+            return False
+    
+        try:
+            self._ensure_email_config()
+            booking_info = self.extract_booking_info(event)
+            booking_url = "https://www.vinterbadbryggen.com"
+            if booking_info:
+                activity_id, event_id, _ = booking_info
+                booking_url = self.construct_booking_url(activity_id, event_id)
+            event_info = self.format_event_info(event)
+    
+            msg = MIMEMultipart("alternative")
+            msg["Subject"] = "🏊‍♂️ New Vinterbad Slot Available!"
+            msg["From"] = SENDER_EMAIL
+            msg["To"] = ", ".join(RECIPIENT_EMAILS)
+    
+            text = f"""New winter swimming slot available at Vinterbadbryggen!
+    
+    Event Details:
+    {event_info}
+    
+    Booking URL:
+    {booking_url}
+    
+    Book now before it fills up!
+    
+    ---
+    This is an automated alert from your Vinterbad monitor.
+    """
+    
+            # IMPORTANT: this whole block stays indented under `try:`
+            html = (
+                "<html>\n"
+                "<body>\n"
+                '<div style="font-family:Arial,Helvetica,sans-serif;max-width:640px;margin:auto">\n'
+                '  <div style="background:#5b6ee1;color:#fff;padding:16px;border-radius:10px 10px 0 0">\n'
+                "    <h2>🏊‍♂️ New Slot Available!</h2>\n"
+                "    <p>A winter swimming slot just opened up at Vinterbadbryggen</p>\n"
+                "  </div>\n"
+                '  <div style="background:#f7f7f7;padding:16px;border-radius:0 0 10px 10px">\n'
+                '    <div style="background:#fff;padding:12px 16px;border-left:4px solid #5b6ee1;border-radius:6px;margin:12px 0">\n'
+                '      <h3 style="margin:0 0 8px 0">Event Details</h3>\n'
+                f'      <p style="margin:0"><strong>{event_info}</strong></p>\n'
+                "    </div>\n"
+                "    <p>Don't wait—these slots fill up fast!</p>\n"
+                "    <p>\n"
+                f'      <a href="{booking_url}" style="display:inline-block;padding:10px 16px;background:#5b6ee1;color:#fff;text-decoration:none;border-radius:6px;font-weight:bold">📅 Book Now</a>\n'
+                "    </p>\n"
+                '    <p style="font-size:12px;color:#666">\n'
+                "      Direct booking URL:<br>\n"
+                f'      <a href="{booking_url}">{booking_url}</a>\n'
+                "    </p>\n"
+                "  </div>\n"
+                '  <p style="text-align:center;color:#666;font-size:12px">\n'
+                f"    This is an automated alert • {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC\n"
+                "  </p>\n"
+                "</div>\n"
+                "</body>\n"
+                "</html>\n"
+            )
+    
+            part1 = MIMEText(text, "plain")
+            part2 = MIMEText(html, "html")
+            msg.attach(part1)
+            msg.attach(part2)
+    
+            with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+                server.login(SENDER_EMAIL, SENDER_PASSWORD)
+                server.send_message(msg)
+    
+            logger.info(f"✅ Email alert sent to {len(RECIPIENT_EMAILS)} recipient(s)")
+            return True
+    
+        except smtplib.SMTPAuthenticationError:
+            logger.error("Email auth failed (check App Password)")
+            return False
+        except Exception as e:
+            logger.error(f"Failed to send email: {e}")
+            return False
 
     # ---------- run once ----------
     def run_once(self) -> int:

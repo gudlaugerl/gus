@@ -8,7 +8,6 @@ Vinterbadbryggen Alert System (GitHub Actions friendly)
 
 import os
 import json
-import time
 import smtplib
 import logging
 from pathlib import Path
@@ -116,15 +115,10 @@ class VinterbadAlertMonitor:
 
     def fetch_events(self) -> List[Dict]:
         try:
-            params = {
-                "eventsToShow": EVENTS_TO_SHOW,
-                **self.get_date_range(),
-            }
+            params = {"eventsToShow": EVENTS_TO_SHOW, **self.get_date_range()}
             resp = self.session.get(API_BASE_URL, params=params, timeout=15)
             if resp.status_code != 200:
-                logger.error(
-                    f"API non-200: {resp.status_code} - {resp.text[:300]}..."
-                )
+                logger.error(f"API non-200: {resp.status_code} - {resp.text[:300]}...")
             resp.raise_for_status()
             data = resp.json()
 
@@ -187,7 +181,6 @@ class VinterbadAlertMonitor:
         try:
             # normalize date
             if "T" in date_val:
-                # allow Z/offset
                 if date_val.endswith("Z"):
                     date_val = date_val[:-1] + "+00:00"
                 from datetime import datetime as dt
@@ -208,7 +201,6 @@ class VinterbadAlertMonitor:
             return None
 
     def is_bookable(self, event: Dict) -> bool:
-        # Numeric availability fields
         for field in [
             "availableSpots",
             "available",
@@ -224,7 +216,6 @@ class VinterbadAlertMonitor:
                     return val > 0
                 if isinstance(val, bool):
                     return val
-        # status-like fields
         for field in ["status", "bookingStatus", "state", "bookable"]:
             if field in event:
                 status = str(event[field]).lower()
@@ -232,8 +223,7 @@ class VinterbadAlertMonitor:
                     return True
                 if status in {"full", "closed", "cancelled", "false", "booked"}:
                     return False
-        # default optimistic
-        return True
+        return True  # default optimistic
 
     def format_event_info(self, event: Dict) -> str:
         parts = []
@@ -264,7 +254,7 @@ class VinterbadAlertMonitor:
             raise RuntimeError("Email not configured: missing VINTERBAD_EMAIL or VINTERBAD_APP_PASSWORD")
         if not RECIPIENT_EMAILS:
             raise RuntimeError("Email not configured: RECIPIENT_EMAILS is empty")
-   
+
     def send_email_alert(self, event: Dict) -> bool:
         if not EMAIL_ENABLED:
             logger.info("Email alerts disabled")
@@ -297,38 +287,35 @@ Book now before it fills up!
 ---
 This is an automated alert from your Vinterbad monitor.
 """
-
-            html = f"""
-<html>
-<body>
-<div style="font-family:Arial,Helvetica,sans-serif;max-width:640px;margin:auto">
-  <div style="background:#5b6ee1;color:#fff;padding:16px;border-radius:10px 10px 0 0">
-    <h2>🏊‍♂️ New Slot Available!</h2>
-    <p>A winter swimming slot just opened up at Vinterbadbryggen</p>
-  </div>
-  <div style="background:#f7f7f7;padding:16px;border-radius:0 0 10px 10px">
-    <div style="background:#fff;padding:12px 16px;border-left:4px solid #5b6ee1;border-radius:6px;margin:12px 0">
-      <h3 style="margin:0 0 8px 0">Event Details</h3>
-      <p style="margin:0"><strong>{event_info}</strong></p>
-    </div>
-    <p>Don't wait—these slots fill up fast!</p>
-    <p>
-      <a href="{booking_url}" style="display:inline-block;padding:10px 16px;background:#5b6ee1;color:#fff;text-decoration:none;border-radius:6px;font-weight:bold">
-        📅 Book Now
-      </a>
-    </p>
-    <p style="font-size:12px;color:#666">
-      Direct booking URL:<br>
-      <a href="{booking_url}">{booking_url}</a>
-    </p>
-  </div>
-  <p style="text-align:center;color:#666;font-size:12px">
-    This is an automated alert • {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC
-  </p>
-</div>
-</body>
-</html>
-"""
+html = (
+    "<html>\n"
+    "<body>\n"
+    '<div style="font-family:Arial,Helvetica,sans-serif;max-width:640px;margin:auto">\n'
+    '  <div style="background:#5b6ee1;color:#fff;padding:16px;border-radius:10px 10px 0 0">\n'
+    "    <h2>🏊‍♂️ New Slot Available!</h2>\n"
+    "    <p>A winter swimming slot just opened up at Vinterbadbryggen</p>\n"
+    "  </div>\n"
+    '  <div style="background:#f7f7f7;padding:16px;border-radius:0 0 10px 10px">\n'
+    '    <div style="background:#fff;padding:12px 16px;border-left:4px solid #5b6ee1;border-radius:6px;margin:12px 0">\n'
+    '      <h3 style="margin:0 0 8px 0">Event Details</h3>\n'
+    f"      <p style=\"margin:0\"><strong>{event_info}</strong></p>\n"
+    "    </div>\n"
+    "    <p>Don't wait—these slots fill up fast!</p>\n"
+    "    <p>\n"
+    f'      <a href="{booking_url}" style="display:inline-block;padding:10px 16px;background:#5b6ee1;color:#fff;text-decoration:none;border-radius:6px;font-weight:bold">📅 Book Now</a>\n'
+    "    </p>\n"
+    '    <p style="font-size:12px;color:#666">\n'
+    "      Direct booking URL:<br>\n"
+    f'      <a href="{booking_url}">{booking_url}</a>\n'
+    "    </p>\n"
+    "  </div>\n"
+    '  <p style="text-align:center;color:#666;font-size:12px">\n'
+    f"    This is an automated alert • {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC\n"
+    "  </p>\n"
+    "</div>\n"
+    "</body>\n"
+    "</html>\n"
+)
 
             part1 = MIMEText(text, "plain")
             part2 = MIMEText(html, "html")
@@ -348,3 +335,88 @@ This is an automated alert from your Vinterbad monitor.
         except Exception as e:
             logger.error(f"Failed to send email: {e}")
             return False
+
+    # ---------- run once ----------
+    def run_once(self) -> int:
+        """Single pass: fetch -> detect new -> email -> persist."""
+        logger.info("Checking for new events...")
+        events = self.fetch_events()
+        if not events:
+            logger.info("No events returned from API")
+            return 0
+
+        logger.info(f"Found {len(events)} total events")
+        new_bookable: List[Dict] = []
+
+        for ev in events:
+            info = self.extract_booking_info(ev)
+            if not info:
+                continue
+            _, _, unique_id = info
+
+            if unique_id not in self.seen_event_ids:
+                logger.info(f"📌 New event detected: {self.format_event_info(ev)}")
+                self.seen_event_ids.add(unique_id)
+                if self.is_bookable(ev):
+                    logger.info("✨ Event is bookable!")
+                    new_bookable.append(ev)
+                else:
+                    logger.info("Event not bookable (full/closed)")
+
+        sent = 0
+        if new_bookable:
+            self.save_seen_events()
+            for ev in new_bookable:
+                if self.send_email_alert(ev):
+                    sent += 1
+
+        logger.info(f"Done. Alerts sent: {sent}")
+        return sent
+
+
+# ---------- helpers & entrypoint ----------
+def _send_test_email():
+    """Send a one-off test mail to verify SMTP + secrets (to sender only)."""
+    dummy_event = {
+        "name": "Vinterbad Monitor Test Email",
+        "date": datetime.utcnow().strftime("%Y-%m-%d"),
+        "time": datetime.utcnow().strftime("%H:%M"),
+        "availableSpots": 9,
+        "activityId": "TEST123",
+        "eventId": "TEST456",
+    }
+
+    # Override recipients for test runs (only sender email)
+    test_recipient = SENDER_EMAIL or "gudlaugerl@gmail.com"
+    logger.info(f"Sending test email to {test_recipient}")
+
+    mon = VinterbadAlertMonitor()
+    # Temporarily override recipients
+    global RECIPIENT_EMAILS
+    RECIPIENT_EMAILS = [test_recipient]
+
+    ok = mon.send_email_alert(dummy_event)
+    logger.info("Test email status: %s", "SENT" if ok else "FAILED")
+    return 0 if ok else 2
+
+
+def main():
+    """Entry point for GitHub Actions."""
+    if os.environ.get("VINTERBAD_TEST_SEND", "").lower() in {"1", "true", "yes"}:
+        raise SystemExit(_send_test_email())
+
+    if EMAIL_ENABLED:
+        if not SENDER_EMAIL or not SENDER_PASSWORD:
+            logger.error("Missing VINTERBAD_EMAIL or VINTERBAD_APP_PASSWORD")
+            raise SystemExit(2)
+        if not RECIPIENT_EMAILS:
+            logger.error("RECIPIENT_EMAILS is empty")
+            raise SystemExit(2)
+
+    monitor = VinterbadAlertMonitor()
+    monitor.run_once()
+    raise SystemExit(0)
+
+
+if __name__ == "__main__":
+    main()

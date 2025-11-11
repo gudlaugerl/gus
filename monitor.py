@@ -374,23 +374,27 @@ class VinterbadAlertMonitor:
 
     # ---------- run once ----------
     def run_once(self) -> int:
-        """Single pass: fetch -> detect new -> email -> persist."""
         logger.info("Checking for new events...")
         events = self.fetch_events()
         if not events:
             logger.info("No events returned from API")
             return 0
-
+        if not SEEN_EVENTS_FILE.exists():
+            with open(SEEN_EVENTS_FILE, "w", encoding="utf-8") as f:
+                json.dump([], f)
+    
         logger.info(f"Found {len(events)} total events")
         new_bookable: List[Dict] = []
-
+        seen_changed = False  # <— track if we added anything
+    
         for ev in events:
             info = self.extract_booking_info(ev)
             if not info:
                 continue
             _, _, unique_id = info
-
+    
             if unique_id not in self.seen_event_ids:
+                seen_changed = True
                 logger.info(f"📌 New event detected: {self.format_event_info(ev)}")
                 self.seen_event_ids.add(unique_id)
                 if self.is_bookable(ev):
@@ -398,16 +402,20 @@ class VinterbadAlertMonitor:
                     new_bookable.append(ev)
                 else:
                     logger.info("Event not bookable (full/closed)")
-
-        sent = 0
-        if new_bookable:
+    
+        # SAVE if we saw anything new at all (bookable or not)
+        if seen_changed:
             self.save_seen_events()
-            for ev in new_bookable:
-                if self.send_email_alert(ev):
-                    sent += 1
-
+    
+        # Then send emails for any bookable ones
+        sent = 0
+        for ev in new_bookable:
+            if self.send_email_alert(ev):
+                sent += 1
+    
         logger.info(f"Done. Alerts sent: {sent}")
         return sent
+
 
 
 # ---------- helpers & entrypoint ----------

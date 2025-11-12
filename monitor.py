@@ -3,13 +3,14 @@
 Vinterbadbryggen Alert System (GitHub Actions friendly)
 - Runs once per invocation (ideal for cron via Actions)
 - Uses env vars for secrets
-- Persists seen_events.json in repo root
+- Persists seen_event.json in repo root
 """
 
 import os
 import json
 import smtplib
 import logging
+import hashlib
 from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Dict, List, Set, Optional, Tuple
@@ -20,6 +21,7 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.utils import formatdate
 
 # =========================
 # Config (env-overridable)
@@ -42,7 +44,7 @@ EMAIL_ENABLED = os.environ.get("VINTERBAD_EMAIL_ENABLED", "true").lower() == "tr
 
 # Paths
 REPO_ROOT = Path(__file__).resolve().parent
-SEEN_EVENTS_FILE = REPO_ROOT / "seen_events.json"
+SEEN_EVENTS_FILE = REPO_ROOT / "seen_event.json"  # singular to match workflow
 
 # Logging (stdout only for Actions)
 logging.basicConfig(
@@ -82,47 +84,44 @@ class VinterbadAlertMonitor:
     """Monitor API and send email alerts for new bookable slots."""
 
     def __init__(self):
-        self.seen_event_ids: Set[str] = self.load_seen_events()
         self.session = _build_session()
+        self.seen_path = SEEN_EVENTS_FILE
+        self.seen_event_ids: Set[str] = self.load_seen_events()
 
-    # ---------- state ----------
+    # ---------- persistence ----------
     def load_seen_events(self) -> Set[str]:
-        if SEEN_EVENTS_FILE.exists():
-            try:
-                with open(SEEN_EVENTS_FILE, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                    if isinstance(data, list):
-                        return set(data)
-            except Exception as e:
-                logger.warning(f"Could not load seen events: {e}")
+        try:
+            if self.seen_path.exists():
+                raw = self.seen_path.read_text(encoding="utf-8").strip()
+                return set(json.loads(raw or "[]"))
+        except Exception as e:
+            logger.warning(f"Could not load seen events ({self.seen_path}): {e}")
         return set()
 
-    def save_seen_events(self):
-        try:
-            with open(SEEN_EVENTS_FILE, "w", encoding="utf-8") as f:
-                json.dump(sorted(list(self.seen_event_ids)), f, ensure_ascii=False)
-        except Exception as e:
-            logger.error(f"Could not save seen events: {e}")
+    def save_seen_events(self) -> None:
+        # deterministic, pretty format → reliable diffs
+        data = json.dumps(sorted(self.seen_event_ids), ensure_ascii=False, indent=2)
+        self.seen_path.write_text(data + "\n", encoding="utf-8")
+        logger.info(f"Persisted {len(self.seen_event_ids)} seen IDs to {self.seen_path}")
 
     # ---------- api ----------
-
     def get_date_range(self):
         tz = ZoneInfo("Europe/Copenhagen")
         now_local = datetime.now(tz)
-    
-        # Start = beginning of today - LOOKBACK_DAYS
-        start_local = (now_local - timedelta(days=LOOKBACK_DAYS)).replace(hour=0, minute=0, second=0, microsecond=0)
-    
-        # End = end of day + LOOKAHEAD_DAYS
-        end_local = (now_local + timedelta(days=LOOKAHEAD_DAYS)).replace(hour=23, minute=59, second=59, microsecond=999000)
-    
-        # Convert to UTC / Zulu format
+
+        start_local = (now_local - timedelta(days=LOOKBACK_DAYS)).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
+        end_local = (now_local + timedelta(days=LOOKAHEAD_DAYS)).replace(
+            hour=23, minute=59, second=59, microsecond=999000
+        )
+
         start_utc = start_local.astimezone(ZoneInfo("UTC"))
         end_utc = end_local.astimezone(ZoneInfo("UTC"))
-    
+
         return {
             "fromOffset": start_utc.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
-            "toTime": end_utc.strftime("%Y-%m-%dT%H:%M:%S.%fZ")[:-3],  # keep milliseconds
+            "toTime": end_utc.strftime("%Y-%m-%dT%H:%M:%S.%fZ")[:-3],
         }
 
     def fetch_events(self) -> List[Dict]:
@@ -133,30 +132,28 @@ class VinterbadAlertMonitor:
                 logger.error(f"API non-200: {resp.status_code} - {resp.text[:300]}...")
             resp.raise_for_status()
             data = resp.json()
-    
-            # If it's already a list of events
+
             if isinstance(data, list):
                 logger.info(f"API returned a list with {len(data)} items")
                 return data
-    
-            # Dict response: try common shapes
+
             events: List[Dict] = []
             if isinstance(data, dict):
-                # 1) days => each day may have 'events'
                 if "days" in data and isinstance(data["days"], list):
-                    day_count = len(data["days"])
                     for d in data["days"]:
                         evs = d.get("events") or d.get("data") or []
                         if isinstance(evs, dict):
                             evs = [evs]
                         if isinstance(evs, list):
                             events.extend(evs)
-                    logger.info(f"Flattened {day_count} day(s) to {len(events)} event(s)")
+                    logger.info(f"Flattened {len(data['days'])} day(s) to {len(events)} event(s)")
                     if events:
-                        logger.info("Sample events: " + " | ".join(self.format_event_info(e) for e in events[:2]))
+                        logger.info(
+                            "Sample events: "
+                            + " | ".join(self.format_event_info(e) for e in events[:2])
+                        )
                     return events
-    
-                # 2) straight 'events' or 'data' list
+
                 for key in ["events", "data", "activities", "results"]:
                     v = data.get(key)
                     if isinstance(v, list):
@@ -164,7 +161,7 @@ class VinterbadAlertMonitor:
                         return v
                     if isinstance(v, dict):
                         return [v]
-    
+
             logger.warning(f"Unexpected API structure: {type(data)}")
             return []
         except requests.exceptions.RequestException as e:
@@ -190,31 +187,29 @@ class VinterbadAlertMonitor:
                 break
 
         if not event_id:
-            date_val = None
-            time_val = None
-            for date_field in ["date", "startDate", "eventDate", "datetime"]:
-                if date_field in event:
-                    date_val = event[date_field]
-                    break
-            for time_field in ["time", "startTime", "eventTime"]:
-                if time_field in event:
-                    time_val = event[time_field]
-                    break
+            date_val = next(
+                (event[f] for f in ["date", "startDate", "eventDate", "datetime"] if f in event),
+                None,
+            )
+            time_val = next(
+                (event[f] for f in ["time", "startTime", "eventTime"] if f in event),
+                None,
+            )
             if date_val and time_val:
-                try:
-                    event_id = self.construct_event_id(date_val, time_val)
-                except Exception:
-                    pass
+                event_id = self.construct_event_id(date_val, time_val)
 
-        unique_id = str(hash(json.dumps(event, sort_keys=True)))
+        try:
+            payload = json.dumps(event, sort_keys=True, ensure_ascii=False).encode("utf-8")
+            unique_id = hashlib.sha1(payload).hexdigest()
+        except Exception:
+            unique_id = f"{activity_id or 'NA'}::{event_id or 'NA'}"
 
-        if activity_id and event_id:
+        if activity_id and event_id and unique_id:
             return activity_id, event_id, unique_id
         return None
 
     def construct_event_id(self, date_val: str, time_val: str) -> Optional[str]:
         try:
-            # normalize date
             if "T" in date_val:
                 if date_val.endswith("Z"):
                     date_val = date_val[:-1] + "+00:00"
@@ -258,7 +253,7 @@ class VinterbadAlertMonitor:
                     return True
                 if status in {"full", "closed", "cancelled", "false", "booked"}:
                     return False
-        return True  # default optimistic
+        return True
 
     def format_event_info(self, event: Dict) -> str:
         parts = []
@@ -294,7 +289,7 @@ class VinterbadAlertMonitor:
         if not EMAIL_ENABLED:
             logger.info("Email alerts disabled")
             return False
-    
+
         try:
             self._ensure_email_config()
             booking_info = self.extract_booking_info(event)
@@ -303,69 +298,67 @@ class VinterbadAlertMonitor:
                 activity_id, event_id, _ = booking_info
                 booking_url = self.construct_booking_url(activity_id, event_id)
             event_info = self.format_event_info(event)
-    
+
             msg = MIMEMultipart("alternative")
             msg["Subject"] = "🏊‍♂️🔥 Það var að koma inn nýtt gus! 🔥🏊‍♂️"
             msg["From"] = SENDER_EMAIL
             msg["To"] = ", ".join(RECIPIENT_EMAILS)
-    
-            text = f"""New winter swimming slot available at Vinterbadbryggen!
-    
-    Event Details:
-    {event_info}
-    
-    Booking URL:
-    {booking_url}
-    
-    Book now before it fills up!
-    
-    ---
-    This is an automated alert from your Vinterbad monitor.
-    """
-    
-            # IMPORTANT: this whole block stays indented under `try:`
-            html = (
-                "<html>\n"
-                "<body>\n"
-                '<div style="font-family:Arial,Helvetica,sans-serif;max-width:640px;margin:auto">\n'
-                '  <div style="background:#5b6ee1;color:#fff;padding:16px;border-radius:10px 10px 0 0">\n'
-                "    <h2>🏊‍♂️🔥  Komdu í GUS! 🔥🏊‍♂️ </h2>\n"
-                "    <p>A winter swimming slot just opened up at Vinterbadbryggen</p>\n"
-                "  </div>\n"
-                '  <div style="background:#f7f7f7;padding:16px;border-radius:0 0 10px 10px">\n'
-                '    <div style="background:#fff;padding:12px 16px;border-left:4px solid #5b6ee1;border-radius:6px;margin:12px 0">\n'
-                '      <h3 style="margin:0 0 8px 0">Event Details</h3>\n'
-                f'      <p style="margin:0"><strong>{event_info}</strong></p>\n'
-                "    </div>\n"
-                "    <p>Don't wait—these slots fill up fast!</p>\n"
-                "    <p>\n"
-                f'      <a href="{booking_url}" style="display:inline-block;padding:10px 16px;background:#5b6ee1;color:#fff;text-decoration:none;border-radius:6px;font-weight:bold">📅 Book Now</a>\n'
-                "    </p>\n"
-                '    <p style="font-size:12px;color:#666">\n'
-                "      Direct booking URL:<br>\n"
-                f'      <a href="{booking_url}">{booking_url}</a>\n'
-                "    </p>\n"
-                "  </div>\n"
-                '  <p style="text-align:center;color:#666;font-size:12px">\n'
-                f"    This is an automated alert • {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC\n"
-                "  </p>\n"
-                "</div>\n"
-                "</body>\n"
-                "</html>\n"
-            )
-    
+
+timestamp = formatdate(localtime=False)  # RFC 2822 date for emails
+
+text = (
+    "New winter swimming slot available at Vinterbadbryggen!\n\n"
+    "Event Details:\n"
+    "{event_info}\n\n"
+    "Booking URL:\n"
+    "{booking_url}\n\n"
+    "Book now before it fills up!\n\n"
+    "---\n"
+    "This is an automated alert from your Vinterbad monitor.\n"
+).format(event_info=event_info, booking_url=booking_url)
+
+html = """
+<html>
+<body>
+<div style="font-family:Arial,Helvetica,sans-serif;max-width:640px;margin:auto">
+  <div style="background:#5b6ee1;color:#fff;padding:16px;border-radius:10px 10px 0 0">
+    <h2>🏊‍♂️🔥  Komdu í GUS! 🔥🏊‍♂️</h2>
+    <p>A winter swimming slot just opened up at Vinterbadbryggen</p>
+  </div>
+  <div style="background:#f7f7f7;padding:16px;border-radius:0 0 10px 10px">
+    <div style="background:#fff;padding:12px 16px;border-left:4px solid #5b6ee1;border-radius:6px;margin:12px 0">
+      <h3 style="margin:0 0 8px 0">Event Details</h3>
+      <p style="margin:0"><strong>{event_info}</strong></p>
+    </div>
+    <p>Don't wait—these slots fill up fast!</p>
+    <p>
+      <a href="{booking_url}" style="display:inline-block;padding:10px 16px;background:#5b6ee1;color:#fff;text-decoration:none;border-radius:6px;font-weight:bold">📅 Book Now</a>
+    </p>
+    <p style="font-size:12px;color:#666">
+      Direct booking URL:<br>
+      <a href="{booking_url}">{booking_url}</a>
+    </p>
+  </div>
+  <p style="text-align:center;color:#666;font-size:12px">
+    This is an automated alert • {timestamp}
+  </p>
+</div>
+</body>
+</html>
+""".format(event_info=event_info, booking_url=booking_url, timestamp=timestamp)
+
             part1 = MIMEText(text, "plain")
             part2 = MIMEText(html, "html")
             msg.attach(part1)
             msg.attach(part2)
-    
+
             with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
                 server.login(SENDER_EMAIL, SENDER_PASSWORD)
                 server.send_message(msg)
-    
+
             logger.info(f"✅ Email alert sent to {len(RECIPIENT_EMAILS)} recipient(s)")
             return True
-    
+
         except smtplib.SMTPAuthenticationError:
             logger.error("Email auth failed (check App Password)")
             return False
@@ -375,48 +368,43 @@ class VinterbadAlertMonitor:
 
     # ---------- run once ----------
     def run_once(self) -> int:
-        logger.info("Checking for new events...")
+        logger.info(f"Using seen file: {self.seen_path}")
         events = self.fetch_events()
         if not events:
             logger.info("No events returned from API")
             return 0
-        if not SEEN_EVENTS_FILE.exists():
-            with open(SEEN_EVENTS_FILE, "w", encoding="utf-8") as f:
-                json.dump([], f)
-    
+
         logger.info(f"Found {len(events)} total events")
         new_bookable: List[Dict] = []
-        seen_changed = False  # <— track if we added anything
-    
+        seen_changed = False
+
         for ev in events:
             info = self.extract_booking_info(ev)
             if not info:
                 continue
             _, _, unique_id = info
-    
+
             if unique_id not in self.seen_event_ids:
                 seen_changed = True
-                logger.info(f"📌 New event detected: {self.format_event_info(ev)}")
                 self.seen_event_ids.add(unique_id)
+                logger.info(f"📌 New event: {self.format_event_info(ev)}")
+
                 if self.is_bookable(ev):
-                    logger.info("✨ Event is bookable!")
+                    logger.info("✨ Bookable")
                     new_bookable.append(ev)
-                else:
-                    logger.info("Event not bookable (full/closed)")
-    
-        # SAVE if we saw anything new at all (bookable or not)
+
         if seen_changed:
             self.save_seen_events()
-    
-        # Then send emails for any bookable ones
+        else:
+            logger.info("No new events; not touching seen file")
+
         sent = 0
         for ev in new_bookable:
             if self.send_email_alert(ev):
                 sent += 1
-    
+
         logger.info(f"Done. Alerts sent: {sent}")
         return sent
-
 
 
 # ---------- helpers & entrypoint ----------
@@ -431,12 +419,10 @@ def _send_test_email():
         "eventId": "TEST456",
     }
 
-    # Override recipients for test runs (only sender email)
     test_recipient = SENDER_EMAIL or "gudlaugerl@gmail.com"
     logger.info(f"Sending test email to {test_recipient}")
 
     mon = VinterbadAlertMonitor()
-    # Temporarily override recipients
     global RECIPIENT_EMAILS
     RECIPIENT_EMAILS = [test_recipient]
 

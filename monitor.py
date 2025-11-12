@@ -324,15 +324,15 @@ class VinterbadAlertMonitor:
 <body>
 <div style="font-family:Arial,Helvetica,sans-serif;max-width:640px;margin:auto">
   <div style="background:#5b6ee1;color:#fff;padding:16px;border-radius:10px 10px 0 0">
-    <h2>🏊‍♂️🔥  Hej {name}, komdu með í GUS! 🔥🏊‍♂️</h2>
-    <p>A winter swimming slot just opened up at Vinterbadbryggen</p>
+    <h2>🏊‍♂️🔥  Hej {name}, komdu með í gus! 🔥🏊‍♂️</h2>
+    <p>Það var að bætast við gus í Vinterbadbryggen</p>
   </div>
   <div style="background:#f7f7f7;padding:16px;border-radius:0 0 10px 10px">
     <div style="background:#fff;padding:12px 16px;border-left:4px solid #5b6ee1;border-radius:6px;margin:12px 0">
       <h3 style="margin:0 0 8px 0">Event Details</h3>
       <p style="margin:0"><strong>{event_info}</strong></p>
     </div>
-    <p>Don't wait—these slots fill up fast!</p>
+    <p>Ekki bíða með að bóka, þau fyllast strax!</p>
     <p>
       <a href="{booking_url}" style="display:inline-block;padding:10px 16px;background:#5b6ee1;color:#fff;text-decoration:none;border-radius:6px;font-weight:bold">📅 Book Now</a>
     </p>
@@ -351,7 +351,7 @@ class VinterbadAlertMonitor:
 
             sent_count = 0
             for name, addr in RECIPIENTS:
-                personal_text = f"Hej {name}, a new winter swimming slot is available!\n\n" + base_text
+                personal_text = f"Hej {name}, komdu með í gus!\n\n" + base_text
                 personal_html = html_template.format(
                     name=name, event_info=event_info, booking_url=booking_url, timestamp=timestamp
                 )

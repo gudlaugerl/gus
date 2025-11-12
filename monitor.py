@@ -311,12 +311,12 @@ class VinterbadAlertMonitor:
             timestamp = formatdate(localtime=False)
 
             base_text = (
-                "New winter swimming slot available at Vinterbadbryggen!\n\n"
+                "Það eru laus pláss í  Vinterbadbryggen!\n\n"
                 f"Event Details:\n{event_info}\n\n"
                 f"Booking URL:\n{booking_url}\n\n"
-                "Book now before it fills up!\n\n"
+                "Ekki bíða með að bóka, þau fyllast strax\n\n"
                 "---\n"
-                "This is an automated alert from your Vinterbad monitor.\n"
+                "Þetta er sjálfvirk tilkynning frá Vinterbad monitor.\n"
             )
 
             html_template = """
@@ -325,7 +325,6 @@ class VinterbadAlertMonitor:
 <div style="font-family:Arial,Helvetica,sans-serif;max-width:640px;margin:auto">
   <div style="background:#5b6ee1;color:#fff;padding:16px;border-radius:10px 10px 0 0">
     <h2>🏊‍♂️🔥  Hej {name}, komdu með í gus! 🔥🏊‍♂️</h2>
-    <p>Það var að bætast við gus í Vinterbadbryggen</p>
   </div>
   <div style="background:#f7f7f7;padding:16px;border-radius:0 0 10px 10px">
     <div style="background:#fff;padding:12px 16px;border-left:4px solid #5b6ee1;border-radius:6px;margin:12px 0">
@@ -337,12 +336,12 @@ class VinterbadAlertMonitor:
       <a href="{booking_url}" style="display:inline-block;padding:10px 16px;background:#5b6ee1;color:#fff;text-decoration:none;border-radius:6px;font-weight:bold">📅 Book Now</a>
     </p>
     <p style="font-size:12px;color:#666">
-      Direct booking URL:<br>
+      Hlekkur á bókun URL:<br>
       <a href="{booking_url}">{booking_url}</a>
     </p>
   </div>
   <p style="text-align:center;color:#666;font-size:12px">
-    This is an automated alert • {timestamp}
+    Þetta er sjálfvirk tilkynning • {timestamp}
   </p>
 </div>
 </body>
@@ -357,7 +356,7 @@ class VinterbadAlertMonitor:
                 )
 
                 msg = MIMEMultipart("alternative")
-                msg["Subject"] = "🏊‍♂️🔥 Það var að koma inn nýtt gus! 🔥🏊‍♂️"
+                msg["Subject"] = "🏊‍♂️🔥 Það var að bætast við nýtt gus! 🔥🏊‍♂️"
                 msg["From"] = SENDER_EMAIL
                 msg["To"] = addr
                 msg.attach(MIMEText(personal_text, "plain"))

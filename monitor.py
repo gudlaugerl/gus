@@ -21,6 +21,7 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+import email.utils
 from email.utils import formatdate
 
 # =========================
@@ -37,9 +38,14 @@ LOOKAHEAD_DAYS = int(os.environ.get("VINTERBAD_LOOKAHEAD_DAYS", "14"))
 # Email via secrets
 SENDER_EMAIL = os.environ.get("VINTERBAD_EMAIL", "").strip()
 SENDER_PASSWORD = os.environ.get("VINTERBAD_APP_PASSWORD", "").strip()
-RECIPIENT_EMAILS = [
-    e.strip() for e in os.environ.get("RECIPIENT_EMAILS", "").split(",") if e.strip()
-]
+RAW_RECIPIENTS = os.environ.get("RECIPIENT_EMAILS", "")
+RECIPIENTS: List[Tuple[str, str]] = []  # [(name, email)]
+
+for part in RAW_RECIPIENTS.replace(",", ";").split(";"):
+    if part.strip():
+        name, addr = email.utils.parseaddr(part.strip())
+        if addr:
+            RECIPIENTS.append((name or addr.split("@")[0], addr))
 EMAIL_ENABLED = os.environ.get("VINTERBAD_EMAIL_ENABLED", "true").lower() == "true"
 
 # Paths
@@ -341,13 +347,20 @@ class VinterbadAlertMonitor:
 </html>
 """.format(event_info=event_info, booking_url=booking_url, timestamp=timestamp)
 
+        for name, addr in RECIPIENTS:
+            personal_text = text.replace("New winter swimming slot available", f"Hej {name}, a new winter swimming slot is available")
+            personal_html = html.replace(
+                "<h2>🏊‍♂️🔥  Komdu í GUS! 🔥🏊‍♂️</h2>",
+                f"<h2>🏊‍♂️🔥  Hej {name}, Komdu í GUS! 🔥🏊‍♂️</h2>"
+            )
+        
             msg = MIMEMultipart("alternative")
-            msg["Subject"] = "🏊‍♂️🔥 komdu með í gus! 🔥🏊‍♂️"
+            msg["Subject"] = "🏊‍♂️🔥 Það var að koma inn nýtt gus! 🔥🏊‍♂️"
             msg["From"] = SENDER_EMAIL
-            msg["To"] = ", ".join(RECIPIENT_EMAILS)
-            msg.attach(MIMEText(text, "plain"))
-            msg.attach(MIMEText(html, "html"))
-
+            msg["To"] = addr
+            msg.attach(MIMEText(personal_text, "plain"))
+            msg.attach(MIMEText(personal_html, "html"))
+        
             with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
                 server.login(SENDER_EMAIL, SENDER_PASSWORD)
                 server.send_message(msg)

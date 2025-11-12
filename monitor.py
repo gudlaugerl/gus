@@ -12,7 +12,8 @@ import smtplib
 import logging
 import hashlib
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+import pytz
 from typing import Dict, List, Set, Optional, Tuple
 from zoneinfo import ZoneInfo
 
@@ -23,6 +24,7 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.utils import formatdate, parseaddr
 
+LOCAL_TZ = pytz.timezone("Europe/Copenhagen")
 # =========================
 # Config (env-overridable)
 # =========================
@@ -114,8 +116,7 @@ class VinterbadAlertMonitor:
 
     # ---------- api ----------
     def get_date_range(self) -> Dict[str, str]:
-        tz = ZoneInfo("Europe/Copenhagen")
-        now_local = datetime.now(tz)
+        now_local = datetime.now(LOCAL_TZ)
 
         start_local = (now_local - timedelta(days=LOOKBACK_DAYS)).replace(
             hour=0, minute=0, second=0, microsecond=0
@@ -333,7 +334,7 @@ class VinterbadAlertMonitor:
     </div>
     <p>Ekki bíða með að bóka, þau fyllast strax!</p>
     <p>
-      <a href="{booking_url}" style="display:inline-block;padding:10px 16px;background:#5b6ee1;color:#fff;text-decoration:none;border-radius:6px;font-weight:bold">📅 Book Now</a>
+      <a href="{booking_url}" style="display:inline-block;padding:10px 16px;background:#5b6ee1;color:#fff;text-decoration:none;border-radius:6px;font-weight:bold">📅 Bókaðu núna</a>
     </p>
     <p style="font-size:12px;color:#666">
       Hlekkur á bókun URL:<br>

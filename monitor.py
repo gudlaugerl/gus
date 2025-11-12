@@ -10,6 +10,7 @@ import os
 import json
 import smtplib
 import logging
+import hashlib
 from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Dict, List, Set, Optional, Tuple
@@ -188,8 +189,22 @@ class VinterbadAlertMonitor:
             return []
 
     # ---------- parsing ----------
+    def _stable_event_uid(self, event: Dict) -> str:
+        """Build a stable unique id from reliable fields (no volatile data)."""
+        candidates = {
+            "activityId": event.get("activityId") or event.get("activity_id") or event.get("activity"),
+            "eventId":    event.get("eventId")    or event.get("event_id")    or event.get("bookingId") or event.get("slotId") or event.get("timeSlotId"),
+            "date":       event.get("date") or event.get("startDate") or event.get("eventDate") or event.get("datetime"),
+            "time":       event.get("time") or event.get("startTime") or event.get("eventTime"),
+            "name":       event.get("name") or event.get("title") or event.get("activityName") or event.get("eventName"),
+        }
+        # prune Nones; normalize to strings
+        clean = {k: str(v) for k, v in candidates.items() if v is not None}
+        payload = json.dumps(clean, sort_keys=True, ensure_ascii=False)
+        return hashlib.sha1(payload.encode("utf-8")).hexdigest()
+
     def extract_booking_info(self, event: Dict) -> Optional[Tuple[str, str, str]]:
-        """Return (activity_id, event_id, unique_id) with a stable unique key."""
+        """Return (activity_id, event_id, unique_id) with robust fallback."""
         activity_id = None
         event_id = None
 
@@ -203,8 +218,8 @@ class VinterbadAlertMonitor:
                 event_id = str(event[field])
                 break
 
+        # If event_id missing, try construct from date/time
         if not event_id:
-            # Fallback: construct from date/time if needed
             date_val = None
             time_val = None
             for date_field in ["date", "startDate", "eventDate", "datetime"]:
@@ -217,14 +232,14 @@ class VinterbadAlertMonitor:
                     break
             if date_val and time_val:
                 try:
-                    event_id = self.construct_event_id(date_val, time_val)
+                    event_id = self.construct_event_id(str(date_val), str(time_val))
                 except Exception:
-                    pass
+                    event_id = None
 
-        if activity_id and event_id:
-            unique_identifier = f"{activity_id}:{event_id}"
-            return activity_id, event_id, unique_identifier
-        return None
+        uid = self._stable_event_uid(event)
+        if not activity_id or not event_id:
+            logger.debug(f"Falling back for UID only (no explicit IDs). Keys: {list(event.keys())[:8]}")
+        return (activity_id or "NA", event_id or "NA", uid)
 
     def construct_event_id(self, date_val: str, time_val: str) -> Optional[str]:
         try:
@@ -315,7 +330,8 @@ class VinterbadAlertMonitor:
             booking_url = "https://www.vinterbadbryggen.com"
             if booking_info:
                 activity_id, event_id, _ = booking_info
-                booking_url = self.construct_booking_url(activity_id, event_id)
+                if activity_id != "NA" and event_id != "NA":
+                    booking_url = self.construct_booking_url(activity_id, event_id)
             event_info = self.format_event_info(event)
 
             recipients = override_recipients if override_recipients else RECIPIENT_EMAILS
@@ -406,7 +422,6 @@ This is an automated alert from your Vinterbad monitor.
         for ev in events:
             info = self.extract_booking_info(ev)
             if not info:
-                # Help debug ID extraction misses
                 logger.debug(f"Could not extract IDs from event keys: {list(ev.keys())[:6]}")
                 continue
             extracted += 1

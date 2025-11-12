@@ -58,6 +58,7 @@ jobs:
         run: python monitor.py
 
       - name: Persist seen events
+        shell: bash
         run: |
           set -euo pipefail
       
@@ -89,7 +90,5 @@ jobs:
             git push origin "$CURRENT_BRANCH"
             echo "Changes pushed."
           else
-        echo "No changes in seen_event.json — nothing to commit."
-      fi
-  
-
+            echo "No changes in seen_event.json - nothing to commit."
+          fi

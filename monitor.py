@@ -305,7 +305,7 @@ class VinterbadAlertMonitor:
             event_info = self.format_event_info(event)
     
             msg = MIMEMultipart("alternative")
-            msg["Subject"] = "🏊‍♂️ New Vinterbad Slot Available!"
+            msg["Subject"] = "🏊‍♂️🔥 Það var að koma inn nýtt gus! 🔥🏊‍♂️"
             msg["From"] = SENDER_EMAIL
             msg["To"] = ", ".join(RECIPIENT_EMAILS)
     

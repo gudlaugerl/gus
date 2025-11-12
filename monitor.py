@@ -285,39 +285,34 @@ class VinterbadAlertMonitor:
         if not RECIPIENT_EMAILS:
             raise RuntimeError("Email not configured: RECIPIENT_EMAILS is empty")
 
-    def send_email_alert(self, event: Dict) -> bool:
-        if not EMAIL_ENABLED:
-            logger.info("Email alerts disabled")
-            return False
+   def send_email_alert(self, event: Dict) -> bool:
+    """Send a formatted email for a newly available slot."""
+    if not EMAIL_ENABLED:
+        logger.info("Email alerts disabled")
+        return False
 
-        try:
-            self._ensure_email_config()
-            booking_info = self.extract_booking_info(event)
-            booking_url = "https://www.vinterbadbryggen.com"
-            if booking_info:
-                activity_id, event_id, _ = booking_info
-                booking_url = self.construct_booking_url(activity_id, event_id)
-            event_info = self.format_event_info(event)
+    try:
+        from email.utils import formatdate
+        self._ensure_email_config()
 
-            msg = MIMEMultipart("alternative")
-            msg["Subject"] = "🏊‍♂️🔥 Það var að koma inn nýtt gus! 🔥🏊‍♂️"
-            msg["From"] = SENDER_EMAIL
-            msg["To"] = ", ".join(RECIPIENT_EMAILS)
+        booking_info = self.extract_booking_info(event)
+        booking_url = "https://www.vinterbadbryggen.com"
+        if booking_info:
+            activity_id, event_id, _ = booking_info
+            booking_url = self.construct_booking_url(activity_id, event_id)
+        event_info = self.format_event_info(event)
+        timestamp = formatdate(localtime=False)
 
-timestamp = formatdate(localtime=False)  # RFC 2822 date for emails
+        text = (
+            "New winter swimming slot available at Vinterbadbryggen!\n\n"
+            f"Event Details:\n{event_info}\n\n"
+            f"Booking URL:\n{booking_url}\n\n"
+            "Book now before it fills up!\n\n"
+            "---\n"
+            "This is an automated alert from your Vinterbad monitor.\n"
+        )
 
-text = (
-    "New winter swimming slot available at Vinterbadbryggen!\n\n"
-    "Event Details:\n"
-    "{event_info}\n\n"
-    "Booking URL:\n"
-    "{booking_url}\n\n"
-    "Book now before it fills up!\n\n"
-    "---\n"
-    "This is an automated alert from your Vinterbad monitor.\n"
-).format(event_info=event_info, booking_url=booking_url)
-
-html = """
+        html = """
 <html>
 <body>
 <div style="font-family:Arial,Helvetica,sans-serif;max-width:640px;margin:auto">
@@ -347,24 +342,27 @@ html = """
 </html>
 """.format(event_info=event_info, booking_url=booking_url, timestamp=timestamp)
 
-            part1 = MIMEText(text, "plain")
-            part2 = MIMEText(html, "html")
-            msg.attach(part1)
-            msg.attach(part2)
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = "🏊‍♂️🔥 Það var að koma inn nýtt gus! 🔥🏊‍♂️"
+        msg["From"] = SENDER_EMAIL
+        msg["To"] = ", ".join(RECIPIENT_EMAILS)
+        msg.attach(MIMEText(text, "plain"))
+        msg.attach(MIMEText(html, "html"))
 
-            with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-                server.login(SENDER_EMAIL, SENDER_PASSWORD)
-                server.send_message(msg)
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(SENDER_EMAIL, SENDER_PASSWORD)
+            server.send_message(msg)
 
-            logger.info(f"✅ Email alert sent to {len(RECIPIENT_EMAILS)} recipient(s)")
-            return True
+        logger.info(f"✅ Email alert sent to {len(RECIPIENT_EMAILS)} recipient(s)")
+        return True
 
-        except smtplib.SMTPAuthenticationError:
-            logger.error("Email auth failed (check App Password)")
-            return False
-        except Exception as e:
-            logger.error(f"Failed to send email: {e}")
-            return False
+    except smtplib.SMTPAuthenticationError:
+        logger.error("Email auth failed (check App Password)")
+        return False
+    except Exception as e:
+        logger.error(f"Failed to send email: {e}")
+        return False
+
 
     # ---------- run once ----------
     def run_once(self) -> int:

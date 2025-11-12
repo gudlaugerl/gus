@@ -21,8 +21,7 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-import email.utils
-from email.utils import formatdate
+from email.utils import formatdate, parseaddr
 
 # =========================
 # Config (env-overridable)
@@ -38,14 +37,18 @@ LOOKAHEAD_DAYS = int(os.environ.get("VINTERBAD_LOOKAHEAD_DAYS", "14"))
 # Email via secrets
 SENDER_EMAIL = os.environ.get("VINTERBAD_EMAIL", "").strip()
 SENDER_PASSWORD = os.environ.get("VINTERBAD_APP_PASSWORD", "").strip()
-RAW_RECIPIENTS = os.environ.get("RECIPIENT_EMAILS", "")
-RECIPIENTS: List[Tuple[str, str]] = []  # [(name, email)]
 
+# Parse recipients "Name <addr>; Other <addr>" or comma-separated
+RAW_RECIPIENTS = os.environ.get("RECIPIENT_EMAILS", "")
+RECIPIENTS: List[Tuple[str, str]] = []
 for part in RAW_RECIPIENTS.replace(",", ";").split(";"):
-    if part.strip():
-        name, addr = email.utils.parseaddr(part.strip())
-        if addr:
-            RECIPIENTS.append((name or addr.split("@")[0], addr))
+    p = part.strip()
+    if not p:
+        continue
+    name, addr = parseaddr(p)
+    if addr:
+        RECIPIENTS.append((name or addr.split("@")[0], addr))
+
 EMAIL_ENABLED = os.environ.get("VINTERBAD_EMAIL_ENABLED", "true").lower() == "true"
 
 # Paths
@@ -105,7 +108,6 @@ class VinterbadAlertMonitor:
         return set()
 
     def save_seen_events(self) -> None:
-        # deterministic, pretty format → reliable diffs
         data = json.dumps(sorted(self.seen_event_ids), ensure_ascii=False, indent=2)
         self.seen_path.write_text(data + "\n", encoding="utf-8")
         logger.info(f"Persisted {len(self.seen_event_ids)} seen IDs to {self.seen_path}")
@@ -291,35 +293,33 @@ class VinterbadAlertMonitor:
         if not RECIPIENTS:
             raise RuntimeError("Email not configured: RECIPIENT_EMAILS is empty")
 
-def send_email_alert(self, event: Dict) -> bool:
-    """Send a formatted email for a newly available slot (personalized per recipient)."""
-    if not EMAIL_ENABLED:
-        logger.info("Email alerts disabled")
-        return False
+    def send_email_alert(self, event: Dict) -> bool:
+        """Send a formatted email for a newly available slot (personalized per recipient)."""
+        if not EMAIL_ENABLED:
+            logger.info("Email alerts disabled")
+            return False
 
-    try:
-        self._ensure_email_config()
+        try:
+            self._ensure_email_config()
 
-        booking_info = self.extract_booking_info(event)
-        booking_url = "https://www.vinterbadbryggen.com"
-        if booking_info:
-            activity_id, event_id, _ = booking_info
-            booking_url = self.construct_booking_url(activity_id, event_id)
-        event_info = self.format_event_info(event)
-        timestamp = formatdate(localtime=False)
+            booking_info = self.extract_booking_info(event)
+            booking_url = "https://www.vinterbadbryggen.com"
+            if booking_info:
+                activity_id, event_id, _ = booking_info
+                booking_url = self.construct_booking_url(activity_id, event_id)
+            event_info = self.format_event_info(event)
+            timestamp = formatdate(localtime=False)
 
-        # Base (non-personalized) text
-        base_text = (
-            "New winter swimming slot available at Vinterbadbryggen!\n\n"
-            f"Event Details:\n{event_info}\n\n"
-            f"Booking URL:\n{booking_url}\n\n"
-            "Book now before it fills up!\n\n"
-            "---\n"
-            "This is an automated alert from your Vinterbad monitor.\n"
-        )
+            base_text = (
+                "New winter swimming slot available at Vinterbadbryggen!\n\n"
+                f"Event Details:\n{event_info}\n\n"
+                f"Booking URL:\n{booking_url}\n\n"
+                "Book now before it fills up!\n\n"
+                "---\n"
+                "This is an automated alert from your Vinterbad monitor.\n"
+            )
 
-        # HTML template with {name}
-        html_template = """
+            html_template = """
 <html>
 <body>
 <div style="font-family:Arial,Helvetica,sans-serif;max-width:640px;margin:auto">
@@ -349,37 +349,35 @@ def send_email_alert(self, event: Dict) -> bool:
 </html>
 """
 
-        # Send one personalized email per recipient (INDENTED inside try:)
-        sent_count = 0
-        for name, addr in RECIPIENTS:
-            personal_text = f"Hej {name}, a new winter swimming slot is available!\n\n" + base_text
-            personal_html = html_template.format(
-                name=name, event_info=event_info, booking_url=booking_url, timestamp=timestamp
-            )
+            sent_count = 0
+            for name, addr in RECIPIENTS:
+                personal_text = f"Hej {name}, a new winter swimming slot is available!\n\n" + base_text
+                personal_html = html_template.format(
+                    name=name, event_info=event_info, booking_url=booking_url, timestamp=timestamp
+                )
 
-            msg = MIMEMultipart("alternative")
-            msg["Subject"] = "🏊‍♂️🔥 Það var að koma inn nýtt gus! 🔥🏊‍♂️"
-            msg["From"] = SENDER_EMAIL
-            msg["To"] = addr
-            msg.attach(MIMEText(personal_text, "plain"))
-            msg.attach(MIMEText(personal_html, "html"))
+                msg = MIMEMultipart("alternative")
+                msg["Subject"] = "🏊‍♂️🔥 Það var að koma inn nýtt gus! 🔥🏊‍♂️"
+                msg["From"] = SENDER_EMAIL
+                msg["To"] = addr
+                msg.attach(MIMEText(personal_text, "plain"))
+                msg.attach(MIMEText(personal_html, "html"))
 
-            with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-                server.login(SENDER_EMAIL, SENDER_PASSWORD)
-                server.send_message(msg)
+                with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+                    server.login(SENDER_EMAIL, SENDER_PASSWORD)
+                    server.send_message(msg)
 
-            sent_count += 1
+                sent_count += 1
 
-        logger.info(f"✅ Email alerts sent to {sent_count} recipient(s)")
-        return True
+            logger.info(f"✅ Email alerts sent to {sent_count} recipient(s)")
+            return True
 
-    except smtplib.SMTPAuthenticationError:
-        logger.error("Email auth failed (check App Password)")
-        return False
-    except Exception as e:
-        logger.error(f"Failed to send email: {e}")
-        return False
-
+        except smtplib.SMTPAuthenticationError:
+            logger.error("Email auth failed (check App Password)")
+            return False
+        except Exception as e:
+            logger.error(f"Failed to send email: {e}")
+            return False
 
     # ---------- run once ----------
     def run_once(self) -> int:
@@ -438,8 +436,9 @@ def _send_test_email() -> int:
     logger.info(f"Sending test email to {test_recipient}")
 
     mon = VinterbadAlertMonitor()
-    global RECIPIENT_EMAILS
-    RECIPIENT_EMAILS = [test_recipient]
+    # Override recipients for a one-off local test
+    global RECIPIENTS
+    RECIPIENTS = [(test_recipient.split("@")[0], test_recipient)]
 
     ok = mon.send_email_alert(dummy_event)
     logger.info("Test email status: %s", "SENT" if ok else "FAILED")

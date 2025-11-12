@@ -57,12 +57,39 @@ jobs:
           VINTERBAD_TEST_SEND: ${{ github.event.inputs.test_send }}
         run: python monitor.py
 
-      # Optional: persist seen_events.json between runs
       - name: Persist seen events
-        if: always()
         run: |
+          set -euo pipefail
+      
           git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add seen_events.json || true
-          git commit -m "Update seen_events.json [skip ci]" || true
-          git push || true
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      
+          # Ensure we’re on the same branch as checkout and up to date
+          CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+          echo "On branch: $CURRENT_BRANCH"
+          git pull --rebase origin "$CURRENT_BRANCH"
+      
+          # Sanity check: did monitor.py create/update the file?
+          if [ ! -f seen_event.json ]; then
+            echo "ERROR: seen_event.json was not created by monitor.py"
+            git status
+            exit 1
+          fi
+      
+          echo "=== seen_event.json (before add) ==="
+          cat seen_event.json || true
+          echo "===================================="
+      
+          # Stage and commit only if there is a real diff
+          git add seen_event.json
+          if ! git diff --cached --quiet; then
+            git status --porcelain
+            git commit -m "Update seen events"
+            git push origin "$CURRENT_BRANCH"
+            echo "Changes pushed."
+          else
+        echo "No changes in seen_event.json — nothing to commit."
+      fi
+  
+

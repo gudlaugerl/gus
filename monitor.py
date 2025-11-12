@@ -316,7 +316,7 @@ class VinterbadAlertMonitor:
 <body>
 <div style="font-family:Arial,Helvetica,sans-serif;max-width:640px;margin:auto">
   <div style="background:#5b6ee1;color:#fff;padding:16px;border-radius:10px 10px 0 0">
-    <h2>🏊‍♂️🔥  Komdu í GUS! 🔥🏊‍♂️</h2>
+    <h2>🏊‍♂️🔥  komdu með í gus! 🔥🏊‍♂️</h2>
     <p>A winter swimming slot just opened up at Vinterbadbryggen</p>
   </div>
   <div style="background:#f7f7f7;padding:16px;border-radius:0 0 10px 10px">
@@ -342,7 +342,7 @@ class VinterbadAlertMonitor:
 """.format(event_info=event_info, booking_url=booking_url, timestamp=timestamp)
 
             msg = MIMEMultipart("alternative")
-            msg["Subject"] = "🏊‍♂️🔥 Það var að koma inn nýtt gus, komdu með! 🔥🏊‍♂️"
+            msg["Subject"] = "🏊‍♂️🔥 komdu með í gus! 🔥🏊‍♂️"
             msg["From"] = SENDER_EMAIL
             msg["To"] = ", ".join(RECIPIENT_EMAILS)
             msg.attach(MIMEText(text, "plain"))

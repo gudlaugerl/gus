@@ -4,32 +4,29 @@ on:
   schedule:
     - cron: "*/5 * * * *"     # every 5 minutes (UTC)
     - cron: "2-59/5 * * * *"  # also at :02, :07, :12, ...
-  
   workflow_dispatch:
     inputs:
       test_send:
         description: "Send a test email now (bypasses API)"
         required: false
         default: "false"
-        
+
 concurrency:
   group: vinterbad-monitor
   cancel-in-progress: true
-  
+
 jobs:
   run-monitor:
     runs-on: ubuntu-latest
-    # If you use environment-scoped secrets, uncomment:
-    # environment: production
     permissions:
-      contents: write          # to commit seen_events.json (if you do that)
+      contents: write   # needed to push seen_events.json
     steps:
       - uses: actions/checkout@v4
 
       - name: Verify secrets are present (no values printed)
         env:
-          EMAIL: ${{ secrets.VINTERBAD_EMAIL }}
-          APPPW: ${{ secrets.VINTERBAD_APP_PASSWORD }}
+          EMAIL:  ${{ secrets.VINTERBAD_EMAIL }}
+          APPPW:  ${{ secrets.VINTERBAD_APP_PASSWORD }}
           RECIPS: ${{ secrets.RECIPIENT_EMAILS }}
         run: |
           [ -n "$EMAIL" ]  && echo "VINTERBAD_EMAIL: OK" || (echo "VINTERBAD_EMAIL: MISSING" && exit 1)
@@ -51,42 +48,28 @@ jobs:
 
       - name: Run monitor
         env:
-          VINTERBAD_EMAIL: ${{ secrets.VINTERBAD_EMAIL }}
-          VINTERBAD_APP_PASSWORD: ${{ secrets.VINTERBAD_APP_PASSWORD }}
-          RECIPIENT_EMAILS: ${{ secrets.RECIPIENT_EMAILS }}
-          VINTERBAD_TEST_SEND: ${{ github.event.inputs.test_send }}
+          # Secrets
+          VINTERBAD_EMAIL:          ${{ secrets.VINTERBAD_EMAIL }}
+          VINTERBAD_APP_PASSWORD:   ${{ secrets.VINTERBAD_APP_PASSWORD }}
+          RECIPIENT_EMAILS:         ${{ secrets.RECIPIENT_EMAILS }}
+          VINTERBAD_TEST_SEND:      ${{ github.event.inputs.test_send }}
+          # Behavior tuning
+          VINTERBAD_EVENTS_TO_SHOW: "1000"
+          VINTERBAD_LOOKBACK_DAYS:  "0"     # set to "1" if you want to include earlier-today edge cases
+          VINTERBAD_LOOKAHEAD_DAYS: "14"
+          LOG_LEVEL:                "INFO"
         run: python monitor.py
 
       - name: Persist seen events
-        shell: bash
+        if: always()
         run: |
-          set -euo pipefail
-      
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
-      
-          CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
-          echo "On branch: $CURRENT_BRANCH"
-          git pull --rebase origin "$CURRENT_BRANCH"
-      
-          # If the monitor didn't create/update the file (no new events), just skip.
-          if [ ! -f seen_event.json ]; then
-            echo "No seen_event.json yet — likely no new events. Skipping commit."
-            exit 0
-          fi
-      
-          echo "=== seen_event.json (before add) ==="
-          cat seen_event.json || true
-          echo "===================================="
-      
-          git add seen_event.json
-          if ! git diff --cached --quiet; then
-            git status --porcelain
-            git commit -m "Update seen events"
-            git push origin "$CURRENT_BRANCH"
-            echo "Changes pushed."
-          else
-            echo "No changes in seen_event.json - nothing to commit."
-          fi
+          # Ensure the file exists so git add never errors
+          [ -f seen_events.json ] || echo "[]" > seen_events.json
 
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add seen_events.json
+          # Only commit if there are staged changes
+          git diff --cached --quiet || git commit -m "Update seen_events.json [skip ci]"
+          git push || true

@@ -329,7 +329,7 @@ class VinterbadAlertMonitor:
                 "<body>\n"
                 '<div style="font-family:Arial,Helvetica,sans-serif;max-width:640px;margin:auto">\n'
                 '  <div style="background:#5b6ee1;color:#fff;padding:16px;border-radius:10px 10px 0 0">\n'
-                "    <h2>🏊‍♂️ New Slot Available!</h2>\n"
+                "    <h2>🏊‍♂️🔥  Komdu í GUS! 🔥🏊‍♂️ </h2>\n"
                 "    <p>A winter swimming slot just opened up at Vinterbadbryggen</p>\n"
                 "  </div>\n"
                 '  <div style="background:#f7f7f7;padding:16px;border-radius:0 0 10px 10px">\n'

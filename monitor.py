@@ -105,7 +105,7 @@ class VinterbadAlertMonitor:
         logger.info(f"Persisted {len(self.seen_event_ids)} seen IDs to {self.seen_path}")
 
     # ---------- api ----------
-    def get_date_range(self):
+    def get_date_range(self) -> Dict[str, str]:
         tz = ZoneInfo("Europe/Copenhagen")
         now_local = datetime.now(tz)
 
@@ -256,7 +256,7 @@ class VinterbadAlertMonitor:
         return True
 
     def format_event_info(self, event: Dict) -> str:
-        parts = []
+        parts: List[str] = []
         for field in ["name", "title", "activityName", "eventName"]:
             if field in event:
                 parts.append(f"{event[field]}")
@@ -277,7 +277,7 @@ class VinterbadAlertMonitor:
         return f"https://www.vinterbadbryggen.com/api/activity/{activity_id}/event/{event_id}/book"
 
     # ---------- email ----------
-    def _ensure_email_config(self):
+    def _ensure_email_config(self) -> None:
         if not EMAIL_ENABLED:
             return
         if not SENDER_EMAIL or not SENDER_PASSWORD:
@@ -285,34 +285,33 @@ class VinterbadAlertMonitor:
         if not RECIPIENT_EMAILS:
             raise RuntimeError("Email not configured: RECIPIENT_EMAILS is empty")
 
-   def send_email_alert(self, event: Dict) -> bool:
-    """Send a formatted email for a newly available slot."""
-    if not EMAIL_ENABLED:
-        logger.info("Email alerts disabled")
-        return False
+    def send_email_alert(self, event: Dict) -> bool:
+        """Send a formatted email for a newly available slot."""
+        if not EMAIL_ENABLED:
+            logger.info("Email alerts disabled")
+            return False
 
-    try:
-        from email.utils import formatdate
-        self._ensure_email_config()
+        try:
+            self._ensure_email_config()
 
-        booking_info = self.extract_booking_info(event)
-        booking_url = "https://www.vinterbadbryggen.com"
-        if booking_info:
-            activity_id, event_id, _ = booking_info
-            booking_url = self.construct_booking_url(activity_id, event_id)
-        event_info = self.format_event_info(event)
-        timestamp = formatdate(localtime=False)
+            booking_info = self.extract_booking_info(event)
+            booking_url = "https://www.vinterbadbryggen.com"
+            if booking_info:
+                activity_id, event_id, _ = booking_info
+                booking_url = self.construct_booking_url(activity_id, event_id)
+            event_info = self.format_event_info(event)
+            timestamp = formatdate(localtime=False)
 
-        text = (
-            "New winter swimming slot available at Vinterbadbryggen!\n\n"
-            f"Event Details:\n{event_info}\n\n"
-            f"Booking URL:\n{booking_url}\n\n"
-            "Book now before it fills up!\n\n"
-            "---\n"
-            "This is an automated alert from your Vinterbad monitor.\n"
-        )
+            text = (
+                "New winter swimming slot available at Vinterbadbryggen!\n\n"
+                f"Event Details:\n{event_info}\n\n"
+                f"Booking URL:\n{booking_url}\n\n"
+                "Book now before it fills up!\n\n"
+                "---\n"
+                "This is an automated alert from your Vinterbad monitor.\n"
+            )
 
-        html = """
+            html = """
 <html>
 <body>
 <div style="font-family:Arial,Helvetica,sans-serif;max-width:640px;margin:auto">
@@ -342,27 +341,26 @@ class VinterbadAlertMonitor:
 </html>
 """.format(event_info=event_info, booking_url=booking_url, timestamp=timestamp)
 
-        msg = MIMEMultipart("alternative")
-        msg["Subject"] = "🏊‍♂️🔥 Það var að koma inn nýtt gus! 🔥🏊‍♂️"
-        msg["From"] = SENDER_EMAIL
-        msg["To"] = ", ".join(RECIPIENT_EMAILS)
-        msg.attach(MIMEText(text, "plain"))
-        msg.attach(MIMEText(html, "html"))
+            msg = MIMEMultipart("alternative")
+            msg["Subject"] = "🏊‍♂️🔥 Það var að koma inn nýtt gus! 🔥🏊‍♂️"
+            msg["From"] = SENDER_EMAIL
+            msg["To"] = ", ".join(RECIPIENT_EMAILS)
+            msg.attach(MIMEText(text, "plain"))
+            msg.attach(MIMEText(html, "html"))
 
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-            server.login(SENDER_EMAIL, SENDER_PASSWORD)
-            server.send_message(msg)
+            with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+                server.login(SENDER_EMAIL, SENDER_PASSWORD)
+                server.send_message(msg)
 
-        logger.info(f"✅ Email alert sent to {len(RECIPIENT_EMAILS)} recipient(s)")
-        return True
+            logger.info(f"✅ Email alert sent to {len(RECIPIENT_EMAILS)} recipient(s)")
+            return True
 
-    except smtplib.SMTPAuthenticationError:
-        logger.error("Email auth failed (check App Password)")
-        return False
-    except Exception as e:
-        logger.error(f"Failed to send email: {e}")
-        return False
-
+        except smtplib.SMTPAuthenticationError:
+            logger.error("Email auth failed (check App Password)")
+            return False
+        except Exception as e:
+            logger.error(f"Failed to send email: {e}")
+            return False
 
     # ---------- run once ----------
     def run_once(self) -> int:
@@ -406,7 +404,7 @@ class VinterbadAlertMonitor:
 
 
 # ---------- helpers & entrypoint ----------
-def _send_test_email():
+def _send_test_email() -> int:
     """Send a one-off test mail to verify SMTP + secrets (to sender only)."""
     dummy_event = {
         "name": "Vinterbad Monitor Test Email",
@@ -429,7 +427,7 @@ def _send_test_email():
     return 0 if ok else 2
 
 
-def main():
+def main() -> None:
     """Entry point for GitHub Actions."""
     if os.environ.get("VINTERBAD_TEST_SEND", "").lower() in {"1", "true", "yes"}:
         raise SystemExit(_send_test_email())

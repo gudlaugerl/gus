@@ -342,7 +342,7 @@ class VinterbadAlertMonitor:
 """.format(event_info=event_info, booking_url=booking_url, timestamp=timestamp)
 
             msg = MIMEMultipart("alternative")
-            msg["Subject"] = "🏊‍♂️🔥 Það var að koma inn nýtt gus! 🔥🏊‍♂️"
+            msg["Subject"] = "🏊‍♂️🔥 Það var að koma inn nýtt gus, komdu með! 🔥🏊‍♂️"
             msg["From"] = SENDER_EMAIL
             msg["To"] = ", ".join(RECIPIENT_EMAILS)
             msg.attach(MIMEText(text, "plain"))

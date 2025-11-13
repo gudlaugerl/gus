@@ -519,9 +519,8 @@ Denne mail er sendt automatisk fra dit lille event-monitor-script.
                 "</html>\n"
             )
 
-            # 👇 Correct UTF-8 usage (no keyword args, charset is positional)
-            part1 = MIMEText(text, "plain", "utf-8")
-            part2 = MIMEText(html, "html", "utf-8")
+            part1 = MIMEText(text, "plain")
+            part2 = MIMEText(html, "html")
             msg.attach(part1)
             msg.attach(part2)
 

@@ -436,79 +436,96 @@ class VinterbadAlertMonitor:
         if not RECIPIENT_EMAILS:
             raise RuntimeError("Email not configured: RECIPIENT_EMAILS is empty")
 
-    def send_email_alert(
-        self, event: Dict, override_recipients: Optional[List[str]] = None
-    ) -> bool:
+    def send_email_alert(self, event: Dict, override_recipients: Optional[List[str]] = None) -> bool:
+        """Send email about a new relevant event."""
         if not EMAIL_ENABLED:
             logger.info("Email alerts disabled")
             return False
 
         try:
             self._ensure_email_config()
+
+            # Who should receive this
+            recipients = override_recipients if override_recipients else RECIPIENT_EMAILS
+
+            # Booking URL (fallback to site root if IDs not usable)
             booking_info = self.extract_booking_info(event)
             booking_url = "https://www.vinterbadbryggen.com"
             if booking_info:
                 activity_id, event_id, _ = booking_info
                 if activity_id != "NA" and event_id != "NA":
                     booking_url = self.construct_booking_url(activity_id, event_id)
+
+            # Human-friendly info (already includes CET + availability text in your version)
             event_info = self.format_event_info(event)
 
-            recipients = override_recipients if override_recipients else RECIPIENT_EMAILS
-
+            # ---- Build message ----
             msg = MIMEMultipart("alternative")
-            msg["Subject"] = "🏊‍♂️ New Vinterbad Gus Event Added"
+            msg["Subject"] = "🏊‍♂️ Nyt gus-event i kalenderen"
             msg["From"] = SENDER_EMAIL
             msg["To"] = ", ".join(recipients)
 
-            text = f"""New gus event detected at Vinterbadbryggen!
+            # Plain text body
+            text = f"""Der er oprettet et nyt gus-event i kalenderen.
 
-Event Details:
+Event:
 {event_info}
 
-Booking URL:
+Booking-side:
 {booking_url}
 
-Tip: Even if it's full, you might be able to join the waitlist.
-
----
-This is an automated alert from your Vinterbad monitor.
+— 
+Denne mail er sendt automatisk fra dit lille event-monitor-script.
 """
 
+            # HTML body
             html = (
                 "<html>\n"
                 "<body>\n"
                 '<div style="font-family:Arial,Helvetica,sans-serif;max-width:640px;margin:auto">\n'
-                '  <div style="background:#5b6ee1;color:#fff;padding:16px;border-radius:10px 10px 0 0">\n'
-                "    <h2>🏊‍♂️ New Gus Event Added</h2>\n"
-                "    <p>A gus event was just added to the calendar at Vinterbadbryggen.</p>\n"
+                '  <div style="background:#5b6ee1;color:#fff;padding:16px;'
+                '              border-radius:10px 10px 0 0">\n'
+                "    <h2>🏊‍♂️ Nyt gus-event</h2>\n"
+                "    <p>Der er kommet et nyt event i kalenderen.</p>\n"
                 "  </div>\n"
-                '  <div style="background:#f7f7f7;padding:16px;border-radius:0 0 10px 10px">\n'
-                '    <div style="background:#fff;padding:12px 16px;border-left:4px solid #5b6ee1;border-radius:6px;margin:12px 0">\n'
-                '      <h3 style="margin:0 0 8px 0">Event Details</h3>\n'
+                '  <div style="background:#f7f7f7;padding:16px;'
+                '              border-radius:0 0 10px 10px">\n'
+                '    <div style="background:#fff;padding:12px 16px;'
+                '                border-left:4px solid #5b6ee1;'
+                '                border-radius:6px;margin:12px 0">\n'
+                '      <h3 style="margin:0 0 8px 0">Eventdetaljer</h3>\n'
                 f'      <p style="margin:0"><strong>{event_info}</strong></p>\n'
                 "    </div>\n"
-                "    <p>Don't wait—these events fill up fast (and the waitlist too!).</p>\n"
+                "    <p>Ventelister og pladser går hurtigt – tjek eventet med det samme.</p>\n"
                 "    <p>\n"
-                f'      <a href="{booking_url}" style="display:inline-block;padding:10px 16px;background:#5b6ee1;color:#fff;text-decoration:none;border-radius:6px;font-weight:bold">📅 View / Book</a>\n'
+                f'      <a href="{booking_url}" '
+                '         style="display:inline-block;padding:10px 16px;'
+                '                background:#5b6ee1;color:#fff;'
+                '                text-decoration:none;border-radius:6px;'
+                '                font-weight:bold">\n'
+                "        📅 Åbn bookingsiden\n"
+                "      </a>\n"
                 "    </p>\n"
                 '    <p style="font-size:12px;color:#666">\n'
-                "      Direct booking URL:<br>\n"
+                "      Direkte URL:<br>\n"
                 f'      <a href="{booking_url}">{booking_url}</a>\n'
                 "    </p>\n"
                 "  </div>\n"
-                '  <p style="text-align:center;color:#666;font-size:12px">\n'
-                f"    This is an automated alert • {datetime.now(LOCAL_TZ).strftime('%Y-%m-%d %H:%M:%S %Z')}\n"
+                f'  <p style="text-align:center;color:#666;font-size:12px">\n'
+                f"    Sendt {datetime.now(LOCAL_TZ).strftime('%Y-%m-%d %H:%M:%S %Z')}\n"
                 "  </p>\n"
                 "</div>\n"
                 "</body>\n"
                 "</html>\n"
             )
 
-            part1 = MIMEText(text, "plain")
-            part2 = MIMEText(html, "html")
+            # 👇 Correct UTF-8 usage (no keyword args, charset is positional)
+            part1 = MIMEText(text, "plain", "utf-8")
+            part2 = MIMEText(html, "html", "utf-8")
             msg.attach(part1)
             msg.attach(part2)
 
+            # ---- Send via Gmail SMTP ----
             with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
                 server.login(SENDER_EMAIL, SENDER_PASSWORD)
                 server.send_message(msg)
@@ -522,6 +539,7 @@ This is an automated alert from your Vinterbad monitor.
         except Exception as e:
             logger.error(f"Failed to send email: {e}")
             return False
+
 
     # ---------- run once ----------
     def run_once(self) -> int:

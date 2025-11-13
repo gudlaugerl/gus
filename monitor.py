@@ -20,6 +20,7 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email import policy
 from zoneinfo import ZoneInfo
 
 # =========================
@@ -460,7 +461,7 @@ class VinterbadAlertMonitor:
             event_info = self.format_event_info(event)
 
             # ---- Build message ----
-            msg = MIMEMultipart("alternative")
+            msg = MIMEMultipart("alternative", policy=policy.SMTP)
             msg["Subject"] = "🏊‍♂️ Nyt gus-event i kalenderen"
             msg["From"] = SENDER_EMAIL
             msg["To"] = ", ".join(recipients)

@@ -468,21 +468,23 @@ class VinterbadAlertMonitor:
             # Plain text body
             text = f"""Der er oprettet et nyt gus-event i kalenderen.
 
-                Event:
-                {event_info}
-                
-                Aktivitetskalender:
-                {booking_url}
-                
-                Tip:
-                Åbn linket (gerne på telefonen), log ind på Vinterbadbryggen og find eventet i kalenderen for at booke eller skrive dig på venteliste.
-                
-                —
-                Denne mail er sendt automatisk fra dit lille event-monitor-script.
-                """
+Event:
+{event_info}
+
+Aktivitetskalender:
+{booking_url}
+
+Tip:
+Åbn linket (gerne på telefonen), log ind på Vinterbadbryggen og find eventet i kalenderen for at booke eller skrive dig på venteliste.
+
+—
+Denne mail er sendt automatisk fra dit lille event-monitor-script.
+"""
+
 
 
             # HTML body
+                       # HTML body
             html = (
                 "<html>\n"
                 "<body>\n"
@@ -493,14 +495,15 @@ class VinterbadAlertMonitor:
                 "    <p>Der er kommet et nyt event i kalenderen.</p>\n"
                 "  </div>\n"
                 '  <div style="background:#f7f7f7;padding:16px;'
-                '              border-radius:0 0 10px 10px">\n"
+                '              border-radius:0 0 10px 10px">\n'
                 '    <div style="background:#fff;padding:12px 16px;'
                 '                border-left:4px solid #5b6ee1;'
                 '                border-radius:6px;margin:12px 0">\n'
                 '      <h3 style="margin:0 0 8px 0">Eventdetaljer</h3>\n'
                 f'      <p style="margin:0"><strong>{event_info}</strong></p>\n'
                 "    </div>\n"
-                "    <p>Åbn aktivitetskalenderen, log ind og find eventet for at booke eller skrive dig på venteliste.</p>\n"
+                "    <p>Åbn aktivitetskalenderen, log ind og find eventet for at booke "
+                "eller skrive dig på venteliste.</p>\n"
                 "    <p>\n"
                 f'      <a href="{booking_url}" '
                 '         style="display:inline-block;padding:10px 16px;'

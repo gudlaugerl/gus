@@ -125,7 +125,7 @@ class VinterbadAlertMonitor:
             hour=0, minute=0, second=0, microsecond=0
         )
         end_local = (now_local + timedelta(days=LOOKAHEAD_DAYS)).replace(
-            hour=23, minute=59, second=59, microsecond=999_000
+            hour=23, minute=59, second=59, microsecond=0
         )
 
         start_utc = start_local.astimezone(ZoneInfo("UTC"))
@@ -133,7 +133,7 @@ class VinterbadAlertMonitor:
 
         return {
             "fromOffset": start_utc.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
-            "toTime": end_utc.strftime("%Y-%m-%dT%H:%M:%S.%fZ")[:-3],  # keep ms
+            "toTime": end_utc.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
         }
 
     def fetch_events(self) -> List[Dict]:
@@ -146,23 +146,42 @@ class VinterbadAlertMonitor:
             resp.raise_for_status()
             data = resp.json()
 
-            # If it's already a list of events
+            # --- CASE 1: top-level list ---
             if isinstance(data, list):
-                logger.info(f"API returned a list with {len(data)} items")
+                # It might be a list of "days", each with slots
+                if data and all(isinstance(x, dict) for x in data) and any("slots" in x for x in data):
+                    events: List[Dict] = []
+                    for d in data:
+                        slots = d.get("slots") or []
+                        if isinstance(slots, dict):
+                            slots = [slots]
+                        if isinstance(slots, list):
+                            events.extend(slots)
+                    logger.info(f"Flattened {len(data)} day(s) to {len(events)} slot event(s)")
+                    if events:
+                        logger.info(
+                            "Sample events: "
+                            + " | ".join(self.format_event_info(e) for e in events[:2])
+                        )
+                    return events
+
+                # Otherwise assume it's already a flat list of events
+                logger.info(f"API returned a list with {len(data)} items (treated as events)")
                 return data
 
+            # --- CASE 2: dict wrapper (fallbacks) ---
             events: List[Dict] = []
             if isinstance(data, dict):
-                # days array with nested events
+                # days array with nested slots or events
                 if "days" in data and isinstance(data["days"], list):
                     day_count = len(data["days"])
                     for d in data["days"]:
-                        evs = d.get("events") or d.get("data") or []
-                        if isinstance(evs, dict):
-                            evs = [evs]
-                        if isinstance(evs, list):
-                            events.extend(evs)
-                    logger.info(f"Flattened {day_count} day(s) to {len(events)} event(s)")
+                        slots = d.get("slots") or d.get("events") or d.get("data") or []
+                        if isinstance(slots, dict):
+                            slots = [slots]
+                        if isinstance(slots, list):
+                            events.extend(slots)
+                    logger.info(f"Flattened {day_count} day(s) to {len(events)} slot event(s)")
                     if events:
                         logger.info(
                             "Sample events: "
@@ -264,6 +283,29 @@ class VinterbadAlertMonitor:
             logger.debug(f"construct_event_id failed: {e}")
             return None
 
+    def is_gus_event(self, event: Dict) -> bool:
+        """Return True only for real gus sauna events."""
+        name = str(event.get("name", "") or "").lower()
+        location = str(
+            event.get("locationName")
+            or event.get("meetLocationName")
+            or ""
+        ).lower()
+
+        # Keywords that clearly indicate a gus session
+        gus_keywords = ["gus"]
+
+        # 1) Name contains "gus" (morgengus, søndagsgus, typisk torsdag gus, etc.)
+        if any(k in name for k in gus_keywords):
+            return True
+
+        # 2) Or the location is the gussauna
+        if "gussauna" in location or "gussaunaen" in location:
+            return True
+
+        # Everything else (Kom & syng, Glemt tøj, etc.) is ignored
+        return False
+
     def is_bookable(self, event: Dict) -> bool:
         for field in [
             "availableSpots",
@@ -312,8 +354,6 @@ class VinterbadAlertMonitor:
 
     # ---------- email ----------
     def _ensure_email_config(self):
-        if not EMAIL_ENABLED:
-            return
         if not SENDER_EMAIL or not SENDER_PASSWORD:
             raise RuntimeError("Email not configured: missing VINTERBAD_EMAIL or VINTERBAD_APP_PASSWORD")
         if not RECIPIENT_EMAILS:
@@ -420,6 +460,11 @@ This is an automated alert from your Vinterbad monitor.
         newly_seen = 0
 
         for ev in events:
+            # Skip non-gus events entirely
+            if not self.is_gus_event(ev):
+                logger.debug(f"Skipping non-gus event: {self.format_event_info(ev)}")
+                continue
+
             info = self.extract_booking_info(ev)
             if not info:
                 logger.debug(f"Could not extract IDs from event keys: {list(ev.keys())[:6]}")
@@ -440,10 +485,15 @@ This is an automated alert from your Vinterbad monitor.
 
         logger.info(f"Extracted IDs for {extracted} event(s); newly seen: {newly_seen}")
 
-        # Save state if we learned anything new (even if not bookable)
         if seen_changed:
             self.save_seen_events()
             logger.info(f"Saved seen set to {SEEN_EVENTS_FILE}")
+            try:
+                # Quick verification of file content length
+                raw = SEEN_EVENTS_FILE.read_text(encoding="utf-8")
+                logger.info(f"seen_events.json bytes: {len(raw)}")
+            except Exception as e:
+                logger.warning(f"Could not read back seen file: {e}")
 
         # Email for any bookable ones
         sent = 0
@@ -477,10 +527,12 @@ def _send_test_email() -> int:
 
 
 def main():
-    """Entry point for GitHub Actions."""
+    """Entry point (matches how GitHub Actions runs it)."""
+    # Optional: test email mode
     if os.environ.get("VINTERBAD_TEST_SEND", "").lower() in {"1", "true", "yes"}:
         raise SystemExit(_send_test_email())
 
+    # Normal monitoring mode
     if EMAIL_ENABLED:
         if not SENDER_EMAIL or not SENDER_PASSWORD:
             logger.error("Missing VINTERBAD_EMAIL or VINTERBAD_APP_PASSWORD")

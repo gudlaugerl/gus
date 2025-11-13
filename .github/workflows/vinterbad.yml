@@ -60,6 +60,14 @@ jobs:
           LOG_LEVEL:                "INFO"
         run: python monitor.py
 
+      - name: Inspect seen_events.json
+        if: failure() || github.event_name == 'workflow_dispatch'
+        run: |
+          ls -l seen_events.json || true
+          echo "First 200 bytes:"
+          head -c 200 seen_events.json || true
+          echo
+
       - name: Persist seen events
         if: always()
         run: |

@@ -424,9 +424,8 @@ class VinterbadAlertMonitor:
         return f"{name} | {pretty_time} | {spot_msg}{waitlist_msg}"
 
     def construct_booking_url(self, activity_id: str, event_id: str) -> str:
-        return (
-            f"https://www.vinterbadbryggen.com/api/activity/{activity_id}/event/{event_id}/book"
-        )
+        return "https://www.vinterbadbryggen.com/Activity/ActivityView"
+
 
     # ---------- email ----------
     def _ensure_email_config(self):
@@ -455,7 +454,7 @@ class VinterbadAlertMonitor:
             if booking_info:
                 activity_id, event_id, _ = booking_info
                 if activity_id != "NA" and event_id != "NA":
-                    booking_url = self.construct_booking_url(activity_id, event_id)
+                    booking_url = "https://www.vinterbadbryggen.com/Activity/ActivityView"
 
             # Human-friendly info (already includes CET + availability text in your version)
             event_info = self.format_event_info(event)
@@ -469,15 +468,19 @@ class VinterbadAlertMonitor:
             # Plain text body
             text = f"""Der er oprettet et nyt gus-event i kalenderen.
 
-Event:
-{event_info}
+                Event:
+                {event_info}
+                
+                Aktivitetskalender:
+                {booking_url}
+                
+                Tip:
+                Åbn linket (gerne på telefonen), log ind på Vinterbadbryggen og find eventet i kalenderen for at booke eller skrive dig på venteliste.
+                
+                —
+                Denne mail er sendt automatisk fra dit lille event-monitor-script.
+                """
 
-Booking-side:
-{booking_url}
-
-— 
-Denne mail er sendt automatisk fra dit lille event-monitor-script.
-"""
 
             # HTML body
             html = (
@@ -490,21 +493,21 @@ Denne mail er sendt automatisk fra dit lille event-monitor-script.
                 "    <p>Der er kommet et nyt event i kalenderen.</p>\n"
                 "  </div>\n"
                 '  <div style="background:#f7f7f7;padding:16px;'
-                '              border-radius:0 0 10px 10px">\n'
+                '              border-radius:0 0 10px 10px">\n"
                 '    <div style="background:#fff;padding:12px 16px;'
                 '                border-left:4px solid #5b6ee1;'
                 '                border-radius:6px;margin:12px 0">\n'
                 '      <h3 style="margin:0 0 8px 0">Eventdetaljer</h3>\n'
                 f'      <p style="margin:0"><strong>{event_info}</strong></p>\n'
                 "    </div>\n"
-                "    <p>Ventelister og pladser går hurtigt – tjek eventet med det samme.</p>\n"
+                "    <p>Åbn aktivitetskalenderen, log ind og find eventet for at booke eller skrive dig på venteliste.</p>\n"
                 "    <p>\n"
                 f'      <a href="{booking_url}" '
                 '         style="display:inline-block;padding:10px 16px;'
                 '                background:#5b6ee1;color:#fff;'
                 '                text-decoration:none;border-radius:6px;'
                 '                font-weight:bold">\n'
-                "        📅 Åbn bookingsiden\n"
+                "        📅 Åbn aktivitetskalenderen\n"
                 "      </a>\n"
                 "    </p>\n"
                 '    <p style="font-size:12px;color:#666">\n'
